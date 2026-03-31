@@ -118,13 +118,73 @@ const Field = ({ label, value, onChange, type = "text", options, disabled }) => 
       </select>
     ) : type === "textarea" ? (
       <textarea value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
-        style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} />
+        style={{ ...inputStyle, minHeight: 110, resize: "vertical" }} />
     ) : (
       <input type={type} value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
         style={{ ...inputStyle }} />
     )}
   </div>
 );
+
+// ─── LiensField (multi-URLs) ───────────────────────────────────────────────
+// liens : string JSON stocké en base, ex: '["https://...","https://..."]'
+const parseLiens = v => { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return v && v.trim() ? [v.trim()] : []; } };
+const stringifyLiens = arr => JSON.stringify(arr.filter(Boolean));
+
+const LiensField = ({ value, onChange }) => {
+  const liens = parseLiens(value || "[]");
+  const update = arr => onChange(stringifyLiens(arr));
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+        <label style={{ fontSize: 10, color: TX2, letterSpacing: "0.1em" }}>LIENS EXTERNES</label>
+        <button type="button" onClick={() => update([...liens, ""])} style={{
+          background: "transparent", border: `1px solid ${G4}`, borderRadius: 3,
+          color: G, cursor: "pointer", fontSize: 11, padding: "2px 10px",
+          fontFamily: "Georgia,serif"
+        }}>+ AJOUTER</button>
+      </div>
+      {liens.length === 0 && (
+        <div style={{ fontSize: 12, color: TX3, fontStyle: "italic", padding: "6px 0" }}>Aucun lien enregistré</div>
+      )}
+      {liens.map((url, i) => (
+        <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
+          <input
+            type="url" value={url} placeholder="https://…"
+            onChange={e => { const a = [...liens]; a[i] = e.target.value; update(a); }}
+            style={{ ...inputStyle, flex: 1, fontSize: 12 }}
+          />
+          <button type="button" onClick={() => update(liens.filter((_, j) => j !== i))} style={{
+            background: "transparent", border: `1px solid ${G4}`, borderRadius: 3,
+            color: TX3, cursor: "pointer", fontSize: 13, padding: "4px 9px",
+            lineHeight: 1
+          }}>✕</button>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const LiensDisplay = ({ value }) => {
+  const liens = parseLiens(value || "[]").filter(Boolean);
+  if (!liens.length) return <span style={{ color: TX3, fontSize: 12 }}>—</span>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {liens.map((url, i) => (
+        <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={{
+          color: G, fontSize: 12, textDecoration: "none",
+          borderBottom: `1px solid ${G4}`, paddingBottom: 1,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260
+        }}
+          onMouseEnter={e => e.currentTarget.style.color = G2}
+          onMouseLeave={e => e.currentTarget.style.color = G}
+        >
+          {url.replace(/^https?:\/\//, "").slice(0, 40)}{url.replace(/^https?:\/\//, "").length > 40 ? "…" : ""}
+        </a>
+      ))}
+    </div>
+  );
+};
 
 // ─── Table ─────────────────────────────────────────────────────────────────
 const Table = ({ cols, rows, onRowClick }) => (
@@ -268,6 +328,8 @@ function AffairesTab({ user }) {
             { key: "numero",      label: "N° Dossier", render: v => <span style={{ color: G, fontWeight: 700, letterSpacing: "0.04em" }}>{v}</span> },
             { key: "prevenu",     label: "Prévenu", render: v => <span style={{ fontWeight: 500 }}>{v}</span> },
             { key: "infractions", label: "Infractions", render: v => <span style={{ color: TX2, fontSize: 12 }}>{v?.length > 55 ? v.slice(0,55)+"…" : v}</span> },
+            { key: "opj_apj",     label: "OPJ / APJ", render: v => <span style={{ color: TX2, fontSize: 12 }}>{v || "—"}</span> },
+            { key: "liens",       label: "Liens", render: v => <LiensDisplay value={v} /> },
             { key: "statut",      label: "Statut", render: v => <Badge status={v} /> },
             { key: "date_dossier",label: "Date" },
             { key: "magistrat",   label: "Magistrat", render: v => <span style={{ color: TX2, fontSize: 12 }}>{v}</span> },
@@ -293,17 +355,20 @@ function AffairesTab({ user }) {
 }
 
 function AffaireAddModal({ nextId, user, onClose, onSave }) {
-  const [form, setForm] = useState({ numero: nextId, prevenu: "", infractions: "", statut: "En cours", date_dossier: new Date().toLocaleDateString("fr-FR"), magistrat: user?.nom || "" });
+  const [form, setForm] = useState({ numero: nextId, prevenu: "", infractions: "", statut: "En cours", date_dossier: new Date().toLocaleDateString("fr-FR"), magistrat: user?.nom || "", opj_apj: "", liens: "[]", notes: "" });
   const [saving, setSaving] = useState(false);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
   return (
     <Modal title="Nouveau dossier" onClose={onClose}>
-      <Field label="N° Dossier"  value={form.numero}       onChange={f("numero")} />
-      <Field label="Prévenu"     value={form.prevenu}      onChange={f("prevenu")} />
-      <Field label="Infractions" value={form.infractions}  onChange={f("infractions")} type="textarea" />
-      <Field label="Statut"      value={form.statut}       onChange={f("statut")} options={["En cours","Instruit","Jugé","Classé sans suite"]} />
-      <Field label="Date"        value={form.date_dossier} onChange={f("date_dossier")} />
-      <Field label="Magistrat"   value={form.magistrat}    onChange={f("magistrat")} />
+      <Field label="N° Dossier"       value={form.numero}       onChange={f("numero")} />
+      <Field label="Prévenu"          value={form.prevenu}      onChange={f("prevenu")} />
+      <Field label="Infractions"      value={form.infractions}  onChange={f("infractions")} type="textarea" />
+      <Field label="Statut"           value={form.statut}       onChange={f("statut")} options={["En cours","Instruit","Jugé","Classé sans suite"]} />
+      <Field label="Date"             value={form.date_dossier} onChange={f("date_dossier")} />
+      <Field label="Magistrat"        value={form.magistrat}    onChange={f("magistrat")} />
+      <Field label="OPJ / APJ en charge" value={form.opj_apj}  onChange={f("opj_apj")} />
+      <LiensField value={form.liens} onChange={f("liens")} />
+      <Field label="Notes"            value={form.notes}        onChange={f("notes")} type="textarea" />
       <BtnRow onClose={onClose} saving={saving}
         onSave={async () => { setSaving(true); await onSave(form); onClose(); }} />
     </Modal>
@@ -312,7 +377,9 @@ function AffaireAddModal({ nextId, user, onClose, onSave }) {
 
 function AffaireDetailModal({ row, onClose, onEdit }) {
   const [statut, setStatut] = useState(row.statut);
-  const [notes, setNotes]   = useState(row.notes || "");
+  const [notes,  setNotes]  = useState(row.notes || "");
+  const [opj,    setOpj]    = useState(row.opj_apj || "");
+  const [liens,  setLiens]  = useState(row.liens || "[]");
   const [saving, setSaving] = useState(false);
   return (
     <Modal title={`Dossier ${row.numero}`} onClose={onClose}>
@@ -322,10 +389,12 @@ function AffaireDetailModal({ row, onClose, onEdit }) {
           <div style={{ fontSize: 13, color: TX }}>{v}</div>
         </div>
       ))}
-      <Field label="Statut" value={statut} onChange={setStatut} options={["En cours","Instruit","Jugé","Classé sans suite"]} />
-      <Field label="Notes"  value={notes}  onChange={setNotes}  type="textarea" />
+      <Field label="Statut"              value={statut} onChange={setStatut} options={["En cours","Instruit","Jugé","Classé sans suite"]} />
+      <Field label="OPJ / APJ en charge" value={opj}    onChange={setOpj} />
+      <LiensField value={liens} onChange={setLiens} />
+      <Field label="Notes"               value={notes}  onChange={setNotes} type="textarea" />
       <BtnRow onClose={onClose} saving={saving}
-        onSave={async () => { setSaving(true); await onEdit(row.id, { statut, notes }); onClose(); }} />
+        onSave={async () => { setSaving(true); await onEdit(row.id, { statut, notes, opj_apj: opj, liens }); onClose(); }} />
     </Modal>
   );
 }
@@ -351,6 +420,8 @@ function PlaintesTab() {
             { key: "plaignant",   label: "Plaignant" },
             { key: "contre",      label: "Mis en cause" },
             { key: "objet",       label: "Objet", render: v => <span style={{ color: TX2, fontSize: 12 }}>{v?.length > 55 ? v.slice(0,55)+"…" : v}</span> },
+            { key: "opj_apj",     label: "OPJ / APJ", render: v => <span style={{ color: TX2, fontSize: 12 }}>{v || "—"}</span> },
+            { key: "liens",       label: "Liens", render: v => <LiensDisplay value={v} /> },
             { key: "statut",      label: "Statut", render: v => <Badge status={v || "En cours"} /> },
             { key: "date_plainte",label: "Date" },
           ]}
@@ -369,17 +440,20 @@ function PlaintesTab() {
 }
 
 function PlainteAddModal({ nextRef, onClose, onSave }) {
-  const [form, setForm] = useState({ reference: nextRef, plaignant: "", contre: "", objet: "", statut: "En cours", date_plainte: new Date().toLocaleDateString("fr-FR") });
+  const [form, setForm] = useState({ reference: nextRef, plaignant: "", contre: "", objet: "", statut: "En cours", date_plainte: new Date().toLocaleDateString("fr-FR"), opj_apj: "", liens: "[]", notes: "" });
   const [saving, setSaving] = useState(false);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
   return (
     <Modal title="Nouvelle plainte" onClose={onClose}>
-      <Field label="Référence"    value={form.reference}    onChange={f("reference")} />
-      <Field label="Plaignant"    value={form.plaignant}    onChange={f("plaignant")} />
-      <Field label="Mis en cause" value={form.contre}       onChange={f("contre")} />
-      <Field label="Objet"        value={form.objet}        onChange={f("objet")} type="textarea" />
-      <Field label="Statut"       value={form.statut}       onChange={f("statut")} options={["En cours","Traitée","Classée sans suite"]} />
-      <Field label="Date"         value={form.date_plainte} onChange={f("date_plainte")} />
+      <Field label="Référence"           value={form.reference}    onChange={f("reference")} />
+      <Field label="Plaignant"           value={form.plaignant}    onChange={f("plaignant")} />
+      <Field label="Mis en cause"        value={form.contre}       onChange={f("contre")} />
+      <Field label="Objet"               value={form.objet}        onChange={f("objet")} type="textarea" />
+      <Field label="Statut"              value={form.statut}       onChange={f("statut")} options={["En cours","Traitée","Classée sans suite"]} />
+      <Field label="Date"                value={form.date_plainte} onChange={f("date_plainte")} />
+      <Field label="OPJ / APJ en charge" value={form.opj_apj}     onChange={f("opj_apj")} />
+      <LiensField value={form.liens} onChange={f("liens")} />
+      <Field label="Notes"               value={form.notes}        onChange={f("notes")} type="textarea" />
       <BtnRow onClose={onClose} saving={saving}
         onSave={async () => { setSaving(true); await onSave(form); }} />
     </Modal>
@@ -407,6 +481,8 @@ function RapportsTab() {
             { key: "auteur",      label: "Auteur" },
             { key: "objet",       label: "Objet", render: v => <span style={{ color: TX2, fontSize: 12 }}>{v?.length > 55 ? v.slice(0,55)+"…" : v}</span> },
             { key: "dossier_lie", label: "Dossier lié" },
+            { key: "opj_apj",     label: "OPJ / APJ", render: v => <span style={{ color: TX2, fontSize: 12 }}>{v || "—"}</span> },
+            { key: "liens",       label: "Liens", render: v => <LiensDisplay value={v} /> },
             { key: "statut",      label: "Statut", render: v => <Badge status={v || "En cours"} /> },
             { key: "date_rapport",label: "Date" },
           ]}
@@ -425,17 +501,20 @@ function RapportsTab() {
 }
 
 function RapportAddModal({ nextRef, onClose, onSave }) {
-  const [form, setForm] = useState({ reference: nextRef, auteur: "", objet: "", dossier_lie: "", statut: "En cours", date_rapport: new Date().toLocaleDateString("fr-FR") });
+  const [form, setForm] = useState({ reference: nextRef, auteur: "", objet: "", dossier_lie: "", statut: "En cours", date_rapport: new Date().toLocaleDateString("fr-FR"), opj_apj: "", liens: "[]", notes: "" });
   const [saving, setSaving] = useState(false);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
   return (
     <Modal title="Nouveau rapport" onClose={onClose}>
-      <Field label="Référence"   value={form.reference}    onChange={f("reference")} />
-      <Field label="Auteur"      value={form.auteur}       onChange={f("auteur")} />
-      <Field label="Objet"       value={form.objet}        onChange={f("objet")} type="textarea" />
-      <Field label="Dossier lié" value={form.dossier_lie}  onChange={f("dossier_lie")} />
-      <Field label="Statut"      value={form.statut}       onChange={f("statut")} options={["En cours","Archivé"]} />
-      <Field label="Date"        value={form.date_rapport} onChange={f("date_rapport")} />
+      <Field label="Référence"           value={form.reference}    onChange={f("reference")} />
+      <Field label="Auteur"              value={form.auteur}       onChange={f("auteur")} />
+      <Field label="Objet"               value={form.objet}        onChange={f("objet")} type="textarea" />
+      <Field label="Dossier lié"         value={form.dossier_lie}  onChange={f("dossier_lie")} />
+      <Field label="Statut"              value={form.statut}       onChange={f("statut")} options={["En cours","Archivé"]} />
+      <Field label="Date"                value={form.date_rapport} onChange={f("date_rapport")} />
+      <Field label="OPJ / APJ en charge" value={form.opj_apj}     onChange={f("opj_apj")} />
+      <LiensField value={form.liens} onChange={f("liens")} />
+      <Field label="Notes"               value={form.notes}        onChange={f("notes")} type="textarea" />
       <BtnRow onClose={onClose} saving={saving}
         onSave={async () => { setSaving(true); await onSave(form); }} />
     </Modal>
@@ -462,7 +541,9 @@ function PrevenusTab() {
             { key: "nom",     label: "Nom complet", render: v => <span style={{ fontWeight: 600 }}>{v}</span> },
             { key: "statut",  label: "Statut", render: v => <Badge status={v} /> },
             { key: "dossiers",label: "Dossier(s)" },
-            { key: "notes",   label: "Notes", render: v => <span style={{ color: TX2, fontSize: 12 }}>{v?.length > 65 ? v.slice(0,65)+"…" : v}</span> },
+            { key: "opj_apj", label: "OPJ / APJ", render: v => <span style={{ color: TX2, fontSize: 12 }}>{v || "—"}</span> },
+            { key: "liens",   label: "Liens", render: v => <LiensDisplay value={v} /> },
+            { key: "notes",   label: "Notes", render: v => <span style={{ color: TX2, fontSize: 12 }}>{v?.length > 55 ? v.slice(0,55)+"…" : v}</span> },
           ]}
           rows={rows}
           onRowClick={row => setModal({ type: "detail", row })}
@@ -481,16 +562,18 @@ function PrevenusTab() {
 }
 
 function PrevenuAddModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ nom: "", statut: "Suspect", dossiers: "", notes: "", date_naissance: "" });
+  const [form, setForm] = useState({ nom: "", statut: "Suspect", dossiers: "", notes: "", date_naissance: "", opj_apj: "", liens: "[]" });
   const [saving, setSaving] = useState(false);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
   return (
     <Modal title="Ficher une personne" onClose={onClose}>
-      <Field label="Nom complet"       value={form.nom}            onChange={f("nom")} />
-      <Field label="Date de naissance" value={form.date_naissance} onChange={f("date_naissance")} />
-      <Field label="Statut"            value={form.statut}         onChange={f("statut")} options={["Suspect","Mis en examen","Condamné","Libre"]} />
-      <Field label="Dossier(s)"        value={form.dossiers}       onChange={f("dossiers")} />
-      <Field label="Notes"             value={form.notes}          onChange={f("notes")} type="textarea" />
+      <Field label="Nom complet"           value={form.nom}            onChange={f("nom")} />
+      <Field label="Date de naissance"     value={form.date_naissance} onChange={f("date_naissance")} />
+      <Field label="Statut"                value={form.statut}         onChange={f("statut")} options={["Suspect","Mis en examen","Condamné","Libre"]} />
+      <Field label="Dossier(s)"            value={form.dossiers}       onChange={f("dossiers")} />
+      <Field label="OPJ / APJ en charge"   value={form.opj_apj}        onChange={f("opj_apj")} />
+      <LiensField value={form.liens} onChange={f("liens")} />
+      <Field label="Notes"                 value={form.notes}          onChange={f("notes")} type="textarea" />
       <BtnRow onClose={onClose} saving={saving}
         onSave={async () => { setSaving(true); await onSave(form); }} />
     </Modal>
@@ -499,7 +582,9 @@ function PrevenuAddModal({ onClose, onSave }) {
 
 function PrevenuDetailModal({ row, onClose, onEdit }) {
   const [statut, setStatut] = useState(row.statut);
-  const [notes, setNotes]   = useState(row.notes || "");
+  const [notes,  setNotes]  = useState(row.notes || "");
+  const [opj,    setOpj]    = useState(row.opj_apj || "");
+  const [liens,  setLiens]  = useState(row.liens || "[]");
   const [saving, setSaving] = useState(false);
   return (
     <Modal title={row.nom} onClose={onClose}>
@@ -509,10 +594,12 @@ function PrevenuDetailModal({ row, onClose, onEdit }) {
           <div style={{ fontSize: 13, color: TX }}>{v}</div>
         </div>
       ))}
-      <Field label="Statut" value={statut} onChange={setStatut} options={["Suspect","Mis en examen","Condamné","Libre"]} />
-      <Field label="Notes"  value={notes}  onChange={setNotes}  type="textarea" />
+      <Field label="Statut"              value={statut} onChange={setStatut} options={["Suspect","Mis en examen","Condamné","Libre"]} />
+      <Field label="OPJ / APJ en charge" value={opj}    onChange={setOpj} />
+      <LiensField value={liens} onChange={setLiens} />
+      <Field label="Notes"               value={notes}  onChange={setNotes} type="textarea" />
       <BtnRow onClose={onClose} saving={saving}
-        onSave={async () => { setSaving(true); await onEdit(row.id, { statut, notes }); onClose(); }} />
+        onSave={async () => { setSaving(true); await onEdit(row.id, { statut, notes, opj_apj: opj, liens }); onClose(); }} />
     </Modal>
   );
 }
